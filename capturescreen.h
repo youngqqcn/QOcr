@@ -3,6 +3,18 @@
 
 #include <QWidget>
 #include <QPainter>
+#include <QList>
+
+
+typedef struct _SCREEN_MAP
+{
+    int     iScreenIndex;   //屏幕的索引
+    QRect   rect;           //屏幕的区域
+    QPixmap pixmap;         //屏幕截图
+}SCREEN_MAP;
+
+
+
 
 class CaptureScreen : public QWidget
 {
@@ -25,6 +37,9 @@ public:
     void keyPressEvent(QKeyEvent *event);
     void paintEvent(QPaintEvent *event);
     QRect getRect(const QPoint &beginPoint, const QPoint &endPoint);
+
+public:
+    QList<SCREEN_MAP> m_listScreenMap; //多屏
 
 private:
     bool m_isMousePress;

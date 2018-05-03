@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>427</width>
-    <height>308</height>
+    <width>939</width>
+    <height>680</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -16,37 +16,50 @@
   <widget class="QPushButton" name="pushButton">
    <property name="geometry">
     <rect>
-     <x>330</x>
-     <y>260</y>
-     <width>80</width>
-     <height>31</height>
+     <x>760</x>
+     <y>310</y>
+     <width>171</width>
+     <height>41</height>
     </rect>
    </property>
    <property name="text">
-    <string>PushButton</string>
+    <string>截图 (回车完成,Esc取消)</string>
    </property>
   </widget>
   <widget class="QLabel" name="label">
    <property name="geometry">
     <rect>
      <x>20</x>
-     <y>20</y>
-     <width>381</width>
-     <height>131</height>
+     <y>30</y>
+     <width>701</width>
+     <height>281</height>
     </rect>
    </property>
    <property name="text">
-    <string>TextLabel</string>
+    <string/>
    </property>
   </widget>
   <widget class="QTextEdit" name="OcrOutput">
    <property name="geometry">
     <rect>
-     <x>10</x>
-     <y>180</y>
-     <width>401</width>
-     <height>71</height>
+     <x>20</x>
+     <y>350</y>
+     <width>711</width>
+     <height>311</height>
     </rect>
+   </property>
+  </widget>
+  <widget class="QCheckBox" name="highAccurate">
+   <property name="geometry">
+    <rect>
+     <x>790</x>
+     <y>380</y>
+     <width>131</width>
+     <height>21</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>高精度识别(50次/天)</string>
    </property>
   </widget>
  </widget>

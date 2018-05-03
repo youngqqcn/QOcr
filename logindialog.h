@@ -36,9 +36,11 @@ private slots:
 
 
 
+    void on_pushButton_clicked();
+
 signals:
     //发送账号信息
-    void sendStrings(QString strAppId, QString strApiKey, QString strSecretKey);
+    void sendStrings(bool bUseDefaultAccount, QString strAppId, QString strApiKey, QString strSecretKey);
 
     //显示主界面
     void sendShowMainWidget();

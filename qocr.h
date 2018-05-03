@@ -18,7 +18,7 @@ public:
 
 public slots:
     //接受 账号登录对话框发送来的信号(携带了3个参数)
-    void RecvSignalArgs(QString strAppId, QString strApiKey, QString strSecretKey);
+    void RecvSignalArgs(bool bUseDefaultAccount, QString strAppId, QString strApiKey, QString strSecretKey);
 
     //接受 账号登录对话框 发来的 "取消"信号, 退出程序
     void RecvSingalExit();
@@ -29,11 +29,12 @@ public slots:
     void onCompleteCature(QPixmap captureImage);
 
     //保存图片
-    void SaveImage(QPixmap captureImage);
+    //void SaveImage(QPixmap captureImage);
 
 Q_SIGNALS:
     //成功保存图片
      void signalSaveImageComplete();
+     //void signalStarOCR(); //开始识别
 
 
 public:
@@ -67,6 +68,8 @@ private:
 
  //   LoginDialog *m_LoginDlg;
     std::string m_strImgPath;
+
+    bool m_bUseDefaultAccount; //使用默认账号
 
 
 private:

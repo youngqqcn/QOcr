@@ -21,6 +21,8 @@ QOcr::QOcr(QWidget *parent) :
     ui->setupUi(this);
 
     connect(this, SIGNAL(signalSaveImageComplete()), this, SLOT(TestAIP())); // 保存图片
+    //QxtGlobalShortcut* shortcut = new QxtGlobalShortcut(QKeySequence("Ctrl+Shift+F12"), w);
+    //connect(shortcut, SIGNAL(activated()), w, SLOT(myslot()));
 }
 
 QOcr::~QOcr()
@@ -28,11 +30,19 @@ QOcr::~QOcr()
     delete ui;
 }
 
-void QOcr::RecvSignalArgs(QString strAppId, QString strApiKey, QString strSecretKey)
+void QOcr::RecvSignalArgs(bool bUseDefaultAccount,QString strAppId, QString strApiKey, QString strSecretKey)
 {
-    this->m_strAppId = strAppId;
-    this->m_strApiKey= strApiKey;
-    this->m_strSecretKey = strSecretKey;
+    if(bUseDefaultAccount )
+    {
+        m_bUseDefaultAccount = true;
+    }
+    else
+    {
+        this->m_strAppId = strAppId;
+        this->m_strApiKey= strApiKey;
+        this->m_strSecretKey = strSecretKey;
+    }
+
 
     //TestJsonCpp();
     //TestAIP();
@@ -56,17 +66,13 @@ void QOcr::on_pushButton_clicked()
     // 点击截图按钮开始截图;
     CaptureScreen* captureHelper = new CaptureScreen();
     connect(captureHelper, SIGNAL(signalCompleteCature(QPixmap)), this, SLOT(onCompleteCature(QPixmap)));
-    connect(captureHelper, SIGNAL(signalCompleteCature(QPixmap)), this, SLOT(SaveImage(QPixmap))); // 保存图片
     captureHelper->show();
 }
 
 void QOcr::onCompleteCature(QPixmap captureImage)
 {
     ui->label->setPixmap(captureImage);
-}
 
-void QOcr::SaveImage(QPixmap captureImage)
-{
     QString strPath =  QCoreApplication::applicationDirPath() + "/tmp1.jpg";
     m_strImgPath = strPath.toStdString();
     //qDebug() << strPath << endl;
@@ -80,6 +86,7 @@ void QOcr::SaveImage(QPixmap captureImage)
         //是否需要提示重新截图??
     }
 }
+
 
 static size_t downloadCallback(void *buffer, size_t sz, size_t nmemb, void *writer)
 {
@@ -175,9 +182,21 @@ void QOcr::TestAIP()
             * API_KEY = 'LUGBatgyRGoerR9FZbV4SQYk'
             * SECRET_KEY = 'fB2MNz1c2UHLTximFlC4laXPg7CVfyjV'
             */
-    std::string app_id = "11176125";
-    std::string api_key = "nUKlV0kDnZTBzNDBsONDhCXu";
-    std::string secret_key = "5riESvRvtMLHhe9SM3sSMCt87E4bCapM";
+    std::string app_id;
+    std::string api_key;
+    std::string secret_key;
+    if(m_bUseDefaultAccount)
+    {
+       app_id = "11176125";
+       api_key = "nUKlV0kDnZTBzNDBsONDhCXu";
+       secret_key = "5riESvRvtMLHhe9SM3sSMCt87E4bCapM";
+    }
+    else
+    {
+        app_id = m_strAppId.toStdString();
+        api_key = m_strApiKey.toStdString();
+        secret_key = m_strSecretKey.toStdString();
+    }
 
     aip::Ocr client(app_id, api_key, secret_key);
 
@@ -189,12 +208,23 @@ void QOcr::TestAIP()
 
     // 如果有可选参数
     std::map<std::string, std::string> options;
+
     options["language_type"] = "CHN_ENG";
     options["detect_direction"] = "true";
     options["detect_language"] = "true";
     options["probability"] = "true";
 
-    result = client.accurate_basic(image, options);
+    if(ui->highAccurate->isChecked())
+    {
+        result = client.accurate_basic(image, options); //高精度
+    }
+    else
+    {
+        result = client.general_basic(image, options);
+    }
+
+
+
 
     //std::cout << result["words_result_num"].asInt();
     //std::cout << result["words_result"].size() << std::endl;

@@ -2,6 +2,10 @@
 #include <QApplication>
 #include <QDesktopWidget>
 #include <QMouseEvent>
+#include <QDebug>
+
+#include <QList>
+
 
 CaptureScreen::CaptureScreen(QWidget *parent)
     : QWidget(parent)
@@ -25,9 +29,41 @@ void CaptureScreen::initWindow()
 
 void CaptureScreen::loadBackgroundPixmap()
 {
-    m_loadPixmap = QPixmap::grabWindow(QApplication::desktop()->winId()); //抓取当前屏幕的图片;
-    m_screenwidth = m_loadPixmap.width();
-    m_screenheight = m_loadPixmap.height();
+    QDesktopWidget* des =  QApplication::desktop();
+    int iScreenCount = des->screenCount();
+    qDebug() <<"屏幕数:" << iScreenCount << endl;
+    qDebug() << "屏幕index" << des->screenNumber(m_beginPoint) << endl;
+
+
+
+    //if(iScreenCount > 1)
+    if(0)
+    {
+        //多屏
+#if 1
+        for(int i = 0; i < iScreenCount; i++)
+        {
+            SCREEN_MAP screen_map;
+            screen_map.iScreenIndex = i + des->primaryScreen();
+            screen_map.rect = des->screenGeometry(i);
+            screen_map.pixmap = des->grab(des->screenGeometry(i));
+
+            char buf[100] = {0};
+            sprintf(buf, "%d", i + des->primaryScreen());
+            bool bRet = screen_map.pixmap.save(QString("tmpp") + buf + ".jpg");
+
+            m_listScreenMap.push_back(screen_map);
+        }
+#endif
+
+
+    }
+    else //只有一个屏幕
+    {
+        m_loadPixmap = QPixmap::grabWindow(QApplication::desktop()->winId());
+        m_screenwidth = m_loadPixmap.width();
+        m_screenheight = m_loadPixmap.height();
+    }
 }
 
 void CaptureScreen::mousePressEvent(QMouseEvent *event)
