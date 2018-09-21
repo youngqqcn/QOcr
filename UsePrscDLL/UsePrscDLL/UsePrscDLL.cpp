@@ -11,6 +11,9 @@
 #endif
 
 
+
+
+
 // CUsePrscDLLApp
 
 BEGIN_MESSAGE_MAP(CUsePrscDLLApp, CWinApp)
@@ -39,6 +42,11 @@ CUsePrscDLLApp theApp;
 
 BOOL CUsePrscDLLApp::InitInstance()
 {
+#if defined(USE_GDI)
+	GdiplusStartupInput     m_gdiplusStartupInput;
+	GdiplusStartup(&m_gdiplusToken, &m_gdiplusStartupInput, NULL);
+#endif
+
 	// 如果一个运行在 Windows XP 上的应用程序清单指定要
 	// 使用 ComCtl32.dll 版本 6 或更高版本来启用可视化方式，
 	//则需要 InitCommonControlsEx()。  否则，将无法创建窗口。
@@ -104,3 +112,14 @@ BOOL CUsePrscDLLApp::InitInstance()
 	return FALSE;
 }
 
+
+
+int CUsePrscDLLApp::ExitInstance()
+{
+	// TODO: Add your specialized code here and/or call the base class
+#if defined(USE_GDI)
+	Gdiplus::GdiplusShutdown(m_gdiplusToken);
+#endif
+
+	return CWinApp::ExitInstance();
+}

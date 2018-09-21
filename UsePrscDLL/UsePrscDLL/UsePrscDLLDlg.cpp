@@ -15,6 +15,7 @@
 #include <curl/curl.h>
 #include <json/json.h>
 #include "ocr.h"  //文字识别
+using namespace Gdiplus;
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -23,6 +24,8 @@
 #pragma comment(lib, "../lib/libcurl.lib")
 #pragma comment(lib, "../lib/libeay32.lib")
 #pragma comment(lib, "../lib/ssleay32.lib")
+#pragma comment(lib, "../lib/GdiPlus.lib")  //2018-09-21 保存图片为jpg格式, 解决win10下图片过大导致失败的问题 
+
 
 #pragma comment(linker, "/subsystem:windows")   
 typedef void(*EntryPoint)(
@@ -249,6 +252,56 @@ BOOL SaveBitmapToFile(HBITMAP   hBitmap, CString szfilename)
 }
 
 
+int GetEncoderClsid(const WCHAR* format, CLSID* pClsid)
+{
+	UINT num = 0;                     // number of image encoders   
+	UINT size = 0;                   // size of the image encoder array in bytes   
+	Gdiplus::ImageCodecInfo* pImageCodecInfo = NULL;
+	GetImageEncodersSize(&num, &size);
+	if (size == 0)
+		return -1;     //   Failure   
+
+	pImageCodecInfo = (Gdiplus::ImageCodecInfo*)(malloc(size));
+	if (pImageCodecInfo == NULL)
+		return -1;     //   Failure   
+
+	GetImageEncoders(num, size, pImageCodecInfo);
+	for (UINT j = 0; j < num; ++j)
+	{
+		if (wcscmp(pImageCodecInfo[j].MimeType, format) == 0)
+		{
+			*pClsid = pImageCodecInfo[j].Clsid;
+			free(pImageCodecInfo);
+			return j;     //   Success   
+		}
+	}
+	free(pImageCodecInfo);
+	return -1;     //   Failure   
+}
+
+void Bitmap2Jpg(Gdiplus::Bitmap* pImage, const wchar_t* pFileName)//
+{
+	DeleteFile(CString(pFileName));
+
+	Gdiplus::EncoderParameters encoderParameters;
+	CLSID jpgClsid;
+	GetEncoderClsid(L"image/jpeg", &jpgClsid);
+	encoderParameters.Count = 1;
+	encoderParameters.Parameter[0].Guid = Gdiplus::EncoderQuality;
+	encoderParameters.Parameter[0].Type = EncoderParameterValueTypeLong;
+	encoderParameters.Parameter[0].NumberOfValues = 1;
+
+	// Save the image as a JPEG with quality level 100.
+	ULONG             quality;
+	quality = 100;
+	encoderParameters.Parameter[0].Value = &quality;
+	Status status = pImage->Save(pFileName, &jpgClsid, &encoderParameters);
+	if (status != Ok)
+	{
+		wprintf(L"%d Attempt to save %s failed./n", status, pFileName);
+	}
+}
+
 
 // 用于应用程序“关于”菜单项的 CAboutDlg 对话框
 
@@ -290,17 +343,21 @@ END_MESSAGE_MAP()
 CUsePrscDLLDlg::CUsePrscDLLDlg(CWnd* pParent /*=NULL*/)
 	: CDialogEx(IDD_USEPRSCDLL_DIALOG, pParent)
 {
+	m_hMutex = NULL;
 	m_hIcon = AfxGetApp()->LoadIcon(IDR_MAINFRAME);
 
 	m_bSelectAll = FALSE;
-	m_bHigh = FALSE;
-	m_bNormal = TRUE;
+	m_bHigh = TRUE;  //默认使用高精度, 500次/天
+	m_bNormal = FALSE; //5000次/天
 }
 
 CUsePrscDLLDlg::~CUsePrscDLLDlg()
 {
-	ReleaseMutex(m_hMutex);
-	CloseHandle(m_hMutex);
+	if (m_hMutex)
+	{
+		ReleaseMutex(m_hMutex);
+		CloseHandle(m_hMutex);
+	}
 }
 
 void CUsePrscDLLDlg::DoDataExchange(CDataExchange* pDX)
@@ -476,6 +533,8 @@ BOOL CUsePrscDLLDlg::OnInitDialog()
 		m_nColumnCount = rect.right/ (tm.tmMaxCharWidth - 1.5); //获取edit一行能够容纳的字符数
 	}
 
+	OnCheckAccuracy(ID_HIGH); //默认选用高精度, 就是这么任性!
+
 	return TRUE;  // 除非将焦点设置到控件，否则返回 TRUE
 }
 
@@ -521,6 +580,20 @@ void CUsePrscDLLDlg::OnPaint()
 	}
 }
 
+INT  GetWindowMajorVerNo()
+{
+	OSVERSIONINFO osvi;
+	BOOL bIsWindowsXPorLater;
+	ZeroMemory(&osvi, sizeof(OSVERSIONINFO));
+	osvi.dwOSVersionInfoSize = sizeof(OSVERSIONINFO);
+
+	GetVersionEx(&osvi);
+
+	return osvi.dwMajorVersion;  //win7:6    win10: 10
+}
+
+
+
 //当用户拖动最小化窗口时系统调用此函数取得光标
 //显示。
 HCURSOR CUsePrscDLLDlg::OnQueryDragIcon()
@@ -531,6 +604,16 @@ HCURSOR CUsePrscDLLDlg::OnQueryDragIcon()
 
 void CUsePrscDLLDlg::OnBnClickedOk()
 {
+#if 0
+	Gdiplus::Bitmap newbitmap(L"test.bmp");
+	const wchar_t *pFileName = L"new.jpg";
+	Bitmap2Jpg(&newbitmap, pFileName);
+
+	return;
+#endif
+
+
+
 	CRect rectDlg;
 	GetWindowRect(rectDlg);//获得窗体的大小
 
@@ -538,6 +621,7 @@ void CUsePrscDLLDlg::OnBnClickedOk()
 	memset(szTempDir, 0, sizeof(szTempDir));
 	GetTempPath(sizeof(szTempDir), szTempDir);//获取临时文件夹路径
 	CString strBmpName = szTempDir + CString(_T("__ocr_temp.bmp"));
+	CString strJpgName = szTempDir + CString(_T("__ocr_temp.jpg"));
 	BOOL bNewImageFlag = FALSE;
 	HINSTANCE dll_handle = LoadLibrary("PrScrn.dll");
 	if (dll_handle != NULL)
@@ -565,7 +649,20 @@ void CUsePrscDLLDlg::OnBnClickedOk()
 				if (hBmNew)
 				{
 					//保存为图片文件
-					SaveBitmapToFile(hBmNew, strBmpName);
+					//SaveBitmapToFile(hBmNew, strBmpName);
+
+#if defined(USE_GDI)
+					//CString strMajor; strMajor.Format("%d", GetWindowMajorVerNo());
+					//MessageBox(strMajor, _T("window版本号"), MB_OK);
+					//if (GetWindowMajorVerNo() == 10) //win10
+					{
+						//Gdiplus::Bitmap bitmap(strBmpName.AllocSysString());
+						Gdiplus::Bitmap bitmap(hBmNew, NULL);  //直接获取内存中的bmp数据
+						Bitmap2Jpg(&bitmap, strJpgName.AllocSysString());  //将bmp数据转为 jpg, jpg比bmp小很多
+						//DeleteFile(strBmpName);
+						strBmpName = strJpgName;
+					}
+#endif
 
 					//隐藏文件
 					CFileStatus fs;
@@ -634,40 +731,54 @@ void CUsePrscDLLDlg::OnBnClickedOk()
 		options["detect_language"] = "true";
 		options["probability"] = "true";
 
-		if (m_bHigh)
-			result = client.accurate_basic(image, options); //高精度
-		else
-			result = client.general_basic(image, options); //普通精度
+		int result_num = 0;
+		for (int iTry = 0; iTry < 5; iTry++)  //尝试5次, 如果5次都失败, 没办法了
+		{
+			if (m_bHigh)
+				result = client.accurate_basic(image, options); //高精度
+			else
+				result = client.general_basic(image, options); //普通精度
+			result_num = result["words_result_num"].asInt();
+			if (result_num > 0)
+				break;
+		}
 
+		double probabilitySum = 0.0;
+		int  iMaxCharCount = 0; //识别结果中一行包含的 最大字符数
+		CString strOutput = _T("");
+		if (result_num == 0)
+		{
+			std::string  err_msg = result["error_msg"].asString();
+			std::string  err_code = result["error_code"].asString();
+			strOutput = CString(_T("错误码:")) + CString(err_code.c_str()) + CString("\r\n") + _T("错误描述:") + CString(err_msg.c_str()) + _T("\r\n");
+			strOutput += CString(_T("\r\n本次识别未成功,很抱歉,请您再试试. 祝您好运! ^_^"));
 
-		int result_num = result["words_result_num"].asInt();
-		
-		/*	Json::StyledWriter sw;
+			Json::StyledWriter sw;
 			std::ofstream os;
 			os.open("tmp.json");
 			os << sw.write(result);
-			os.close();*/
-		CString strOutput = "";
-		double probabilitySum = 0.0;
-		int  iMaxCharCount = 0; //识别结果中一行包含的 最大字符数
-		for (int i = 0; i < result["words_result"].size(); i++)
+			os.close();
+		}
+		else
 		{
-			probabilitySum += result["words_result"][i]["probability"]["average"].asDouble(); //识别的精确度
-
-			std::string tmpStr = result["words_result"][i]["words"].asCString();
-			char *pgb2312 = new char[tmpStr.length() * 2];
-			memset(pgb2312, 0, tmpStr.length() * 2);
-			Utf8ToGB2312(tmpStr.c_str(), pgb2312);
-			strOutput += pgb2312 + CString("\r\n");
-
-			CString strTmp; strTmp = pgb2312;
-			if (strTmp.GetLength() > iMaxCharCount /*字符数,不是字节数*/)
-				iMaxCharCount = strTmp.GetLength();
-
-			if (pgb2312)
+			for (int i = 0; i < result["words_result"].size(); i++)
 			{
-				delete[] pgb2312;
-				pgb2312 = NULL;
+				probabilitySum += result["words_result"][i]["probability"]["average"].asDouble(); //识别的精确度
+				std::string tmpStr = result["words_result"][i]["words"].asCString();
+				char *pgb2312 = new char[tmpStr.length() * 2];
+				memset(pgb2312, 0, tmpStr.length() * 2);
+				Utf8ToGB2312(tmpStr.c_str(), pgb2312);
+				strOutput += pgb2312 + CString("\r\n");
+
+				CString strTmp; strTmp = pgb2312;
+				if (strTmp.GetLength() > iMaxCharCount /*字符数,不是字节数*/)
+					iMaxCharCount = strTmp.GetLength();
+
+				if (pgb2312)
+				{
+					delete[] pgb2312;
+					pgb2312 = NULL;
+				}
 			}
 		}
 
@@ -699,6 +810,7 @@ void CUsePrscDLLDlg::OnBnClickedOk()
 
 		UpdateWindow();
 		DeleteFile(strBmpName);
+		DeleteFile(strJpgName);
 	}
 
 #endif

@@ -50,3 +50,11 @@
 #endif
 
 
+
+// π”√GDI 
+#define  USE_GDI
+#if defined(USE_GDI)
+#define ULONG_PTR unsigned long
+#include <Gdiplus.h>
+using namespace Gdiplus;
+#endif

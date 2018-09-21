@@ -24,9 +24,15 @@ public:
 public:
 	virtual BOOL InitInstance();
 
+	//使用GDI
+#if defined(USE_GDI)
+	ULONG_PTR        m_gdiplusToken;
+#endif
+
 // 实现
 
 	DECLARE_MESSAGE_MAP()
+	virtual int ExitInstance();
 };
 
 extern CUsePrscDLLApp theApp;
