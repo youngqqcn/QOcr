@@ -5,6 +5,12 @@
 
 #pragma once
 
+#pragma warning(disable:4727)
+#pragma warning(disable:4018)
+#pragma warning(disable:4267)
+#pragma warning(disable:4244)
+
+
 #ifndef VC_EXTRALEAN
 #define VC_EXTRALEAN            // 从 Windows 头中排除极少使用的资料
 #endif
@@ -58,3 +64,4 @@
 #include <Gdiplus.h>
 using namespace Gdiplus;
 #endif
+

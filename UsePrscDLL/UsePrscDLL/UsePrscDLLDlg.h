@@ -48,6 +48,11 @@ public:
 	BOOL m_bNormal; //普通精度
 
 
+	BOOL m_bNetOk; //网络是否可用
+
+	BOOL m_bBtnOkStatus ;
+
+
 	CStatusBar m_status;
 
 	UINT m_nLineCount;
@@ -60,8 +65,12 @@ public:
 	CString m_strAppID;
 	CString m_strApiKey;
 	CString m_strSecreteKey;
+
+	CString  m_strJpgName;
 	afx_msg void OnAbout();
 
 	HANDLE m_hMutex;
+	HANDLE m_hNetCheckThread;
 	afx_msg void OnDownloadSrc();
+	afx_msg void OnClose();
 };

@@ -10,24 +10,25 @@
 #include "UsePrscDLLDlg.h"
 #include "afxdialogex.h"
 
-#include "CurstomBaiDuIdDlg.h"
-
+#include <iphlpapi.h>
 #include <curl/curl.h>
 #include <json/json.h>
 #include "ocr.h"  //文字识别
+
+#include "CurstomBaiDuIdDlg.h"
 using namespace Gdiplus;
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
 #endif
 
+#pragma comment(lib, "Iphlpapi.lib") 
 #pragma comment(lib, "../lib/libcurl.lib")
 #pragma comment(lib, "../lib/libeay32.lib")
 #pragma comment(lib, "../lib/ssleay32.lib")
 #pragma comment(lib, "../lib/GdiPlus.lib")  //2018-09-21 保存图片为jpg格式, 解决win10下图片过大导致失败的问题 
-
-
 #pragma comment(linker, "/subsystem:windows")   
+
 typedef void(*EntryPoint)(
 	HWND hwnd,        // handle to owner window   
 	HINSTANCE hinst,  // instance handle for the DLL   
@@ -35,92 +36,34 @@ typedef void(*EntryPoint)(
 	int nCmdShow      // show state   
 	);
 
-
-
-
-/*  libcurl write callback function */
-size_t write_data(void *ptr, size_t size, size_t nmemb, FILE *stream) {
-	size_t written = fwrite(ptr, size, nmemb, stream);
-	return written;
-}
-
-
-/*
-Function:   libcurl connection initialization  download  file
-Parameters:   (const char* url, const char outfilename[FILENAME_MAX])
-url:   要下载文件的url地址
-outfilename:   下载文件指定的文件名
-*/
-//不支持  https 下载
-int DOWNLOAD_FILE(const char* url, const char outfilename[FILENAME_MAX]) {
-	CURL *curl;
-	FILE *fp;
-	CURLcode res;
-	/*   调用curl_global_init()初始化libcurl  */
-	res = curl_global_init(CURL_GLOBAL_ALL);
-	if (CURLE_OK != res)
-	{
-		printf("init libcurl failed.");
-		curl_global_cleanup();
-		return -1;
-	}
-	/*  调用curl_easy_init()函数得到 easy interface型指针  */
-	curl = curl_easy_init();
-	if (curl) {
-
-		fopen_s(&fp, outfilename, "wb");
-
-		/*  调用curl_easy_setopt()设置传输选项 */
-		res = curl_easy_setopt(curl, CURLOPT_URL, url);
-		if (res != CURLE_OK)
-		{
-			fclose(fp);
-			curl_easy_cleanup(curl);
-			return -1;
-		}
-		/*  根据curl_easy_setopt()设置的传输选项，实现回调函数以完成用户特定任务  */
-		res = curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_data);
-		if (res != CURLE_OK)
-		{
-			fclose(fp);
-			curl_easy_cleanup(curl);
-			return -1;
-		}
-		/*  根据curl_easy_setopt()设置的传输选项，实现回调函数以完成用户特定任务  */
-		res = curl_easy_setopt(curl, CURLOPT_WRITEDATA, fp);
-		if (res != CURLE_OK)
-		{
-			fclose(fp);
-			curl_easy_cleanup(curl);
-			return -1;
-		}
-
-		res = curl_easy_perform(curl);                               // 调用curl_easy_perform()函数完成传输任务  
-		fclose(fp);
-		/* Check for errors */
-		if (res != CURLE_OK) {
-			fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
-			curl_easy_cleanup(curl);
-			return -1;
-		}
-
-		/* always cleanup */
-		curl_easy_cleanup(curl);                                     // 调用curl_easy_cleanup()释放内存   
-
-	}
-	curl_global_cleanup();
-	return 0;
-}
-
-
-
-
+HANDLE   g_hOcrMutex = NULL;
+HANDLE   g_hCheckIpMutex = NULL;
+HANDLE   g_hExitEvent = NULL; //线程退出事件
 
 static UINT BASED_CODE indicators[] =
 {
 	IDS_STRING_ROWS,
 	IDS_STRING_PROB
 };
+
+
+BOOL CheckIPReachable(LPCTSTR strIPAddress)
+{
+	ASSERT(strIPAddress);
+	char strIP[100];
+
+	strcpy_s(strIP, strIPAddress);
+
+	IPAddr ipaddr = inet_addr(strIP);
+	ULONG ulHopCount, ulRTT;
+
+	
+	::WaitForSingleObject(g_hCheckIpMutex, 100);
+	BOOL  bRet = (BOOL)GetRTTAndHopCount(ipaddr, &ulHopCount, 30/*最大hop数, 可自行设置*/, &ulRTT); //相当于  ping 
+	::ReleaseMutex(g_hCheckIpMutex);
+	return bRet;
+}
+
 
 //GB2312到UTF-8的转换
 static int GB2312ToUtf8(const char* gb2312, char* utf8)
@@ -148,109 +91,6 @@ static int Utf8ToGB2312(const char* utf8, char* gb2312)
 	if (wstr) delete[] wstr;
 	return len;
 }
-
-//保存剪切板中的位图 为 图片文件
-BOOL SaveBitmapToFile(HBITMAP   hBitmap, CString szfilename)
-{
-	HDC     hDC;
-	//当前分辨率下每象素所占字节数          
-	int     iBits;
-	//位图中每象素所占字节数          
-	WORD     wBitCount;
-	//定义调色板大小，     位图中像素字节大小     ，位图文件大小     ，     写入文件字节数              
-	DWORD     dwPaletteSize = 0, dwBmBitsSize = 0, dwDIBSize = 0, dwWritten = 0;
-	//位图属性结构              
-	BITMAP     Bitmap;
-	//位图文件头结构          
-	BITMAPFILEHEADER     bmfHdr;
-	//位图信息头结构              
-	BITMAPINFOHEADER     bi;
-	//指向位图信息头结构                  
-	LPBITMAPINFOHEADER     lpbi;
-	//定义文件，分配内存句柄，调色板句柄              
-	HANDLE     fh, hDib, hPal, hOldPal = NULL;
-
-	//计算位图文件每个像素所占字节数              
-	hDC = CreateDC(_T("DISPLAY"), NULL, NULL, NULL);
-	iBits = GetDeviceCaps(hDC, BITSPIXEL)     *     GetDeviceCaps(hDC, PLANES);
-	DeleteDC(hDC);
-	if (iBits <= 1)
-		wBitCount = 1;
-	else  if (iBits <= 4)
-		wBitCount = 4;
-	else if (iBits <= 8)
-		wBitCount = 8;
-	else
-		wBitCount = 24;
-
-	GetObject(hBitmap, sizeof(Bitmap), (LPSTR)&Bitmap);
-	bi.biSize = sizeof(BITMAPINFOHEADER);
-	bi.biWidth = Bitmap.bmWidth;
-	bi.biHeight = Bitmap.bmHeight;
-	bi.biPlanes = 1;
-	bi.biBitCount = wBitCount;
-	bi.biCompression = BI_RGB;
-	bi.biSizeImage = 0;
-	bi.biXPelsPerMeter = 0;
-	bi.biYPelsPerMeter = 0;
-	bi.biClrImportant = 0;
-	bi.biClrUsed = 0;
-
-	dwBmBitsSize = ((Bitmap.bmWidth *wBitCount + 31) / 32) * 4 * Bitmap.bmHeight;
-
-	//为位图内容分配内存              
-	hDib = GlobalAlloc(GHND, dwBmBitsSize + dwPaletteSize + sizeof(BITMAPINFOHEADER));
-	lpbi = (LPBITMAPINFOHEADER)GlobalLock(hDib);
-	*lpbi = bi;
-
-	//     处理调色板                  
-	hPal = GetStockObject(DEFAULT_PALETTE);
-	if (hPal)
-	{
-		hDC = ::GetDC(NULL);
-		hOldPal = ::SelectPalette(hDC, (HPALETTE)hPal, FALSE);
-		RealizePalette(hDC);
-	}
-
-	//     获取该调色板下新的像素值              
-	GetDIBits(hDC, hBitmap, 0, (UINT)Bitmap.bmHeight,
-		(LPSTR)lpbi + sizeof(BITMAPINFOHEADER) + dwPaletteSize,
-		(BITMAPINFO *)lpbi, DIB_RGB_COLORS);
-
-	//恢复调色板                  
-	if (hOldPal)
-	{
-		::SelectPalette(hDC, (HPALETTE)hOldPal, TRUE);
-		RealizePalette(hDC);
-		::ReleaseDC(NULL, hDC);
-	}
-
-	//创建位图文件                  
-	fh = CreateFile(szfilename, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS,
-		FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN, NULL);
-
-	if (fh == INVALID_HANDLE_VALUE)         return     FALSE;
-
-	//     设置位图文件头              
-	bmfHdr.bfType = 0x4D42;     //     "BM"              
-	dwDIBSize = sizeof(BITMAPFILEHEADER) + sizeof(BITMAPINFOHEADER) + dwPaletteSize + dwBmBitsSize;
-	bmfHdr.bfSize = dwDIBSize;
-	bmfHdr.bfReserved1 = 0;
-	bmfHdr.bfReserved2 = 0;
-	bmfHdr.bfOffBits = (DWORD)sizeof(BITMAPFILEHEADER) + (DWORD)sizeof(BITMAPINFOHEADER) + dwPaletteSize;
-	//     写入位图文件头              
-	WriteFile(fh, (LPSTR)&bmfHdr, sizeof(BITMAPFILEHEADER), &dwWritten, NULL);
-	//     写入位图文件其余内容              
-	WriteFile(fh, (LPSTR)lpbi, dwDIBSize, &dwWritten, NULL);
-	//清除                  
-	GlobalUnlock(hDib);
-	GlobalFree(hDib);
-	CloseHandle(fh);
-
-	return     TRUE;
-
-}
-
 
 int GetEncoderClsid(const WCHAR* format, CLSID* pClsid)
 {
@@ -304,7 +144,6 @@ void Bitmap2Jpg(Gdiplus::Bitmap* pImage, const wchar_t* pFileName)//
 
 
 // 用于应用程序“关于”菜单项的 CAboutDlg 对话框
-
 class CAboutDlg : public CDialogEx
 {
 public:
@@ -321,6 +160,8 @@ public:
 // 实现
 protected:
 	DECLARE_MESSAGE_MAP()
+public:
+	virtual BOOL OnInitDialog();
 };
 
 CAboutDlg::CAboutDlg() : CDialogEx(IDD_ABOUTBOX)
@@ -332,17 +173,26 @@ void CAboutDlg::DoDataExchange(CDataExchange* pDX)
 	CDialogEx::DoDataExchange(pDX);
 }
 
+
+
+BOOL CAboutDlg::OnInitDialog()
+{
+	CDialogEx::OnInitDialog();
+	SetIcon(AfxGetApp()->LoadIcon(IDR_MAINFRAME), FALSE); //设置小图标 
+	return TRUE;  // return TRUE unless you set the focus to a control
+				  // EXCEPTION: OCX Property Pages should return FALSE
+}
+
 BEGIN_MESSAGE_MAP(CAboutDlg, CDialogEx)
 END_MESSAGE_MAP()
 
 
 // CUsePrscDLLDlg 对话框
-
-
-
 CUsePrscDLLDlg::CUsePrscDLLDlg(CWnd* pParent /*=NULL*/)
 	: CDialogEx(IDD_USEPRSCDLL_DIALOG, pParent)
 {
+	m_bBtnOkStatus = TRUE;
+	m_bNetOk = TRUE; //假设网络可用
 	m_hMutex = NULL;
 	m_hIcon = AfxGetApp()->LoadIcon(IDR_MAINFRAME);
 
@@ -358,6 +208,7 @@ CUsePrscDLLDlg::~CUsePrscDLLDlg()
 		ReleaseMutex(m_hMutex);
 		CloseHandle(m_hMutex);
 	}
+	
 }
 
 void CUsePrscDLLDlg::DoDataExchange(CDataExchange* pDX)
@@ -375,10 +226,30 @@ BEGIN_MESSAGE_MAP(CUsePrscDLLDlg, CDialogEx)
 	ON_COMMAND(ID_32771, &CUsePrscDLLDlg::OnCustomBaiDuID)
 	ON_COMMAND(ID_32794, &CUsePrscDLLDlg::OnAbout)
 	ON_COMMAND(ID_32795, &CUsePrscDLLDlg::OnDownloadSrc)
+	ON_WM_CLOSE()
 END_MESSAGE_MAP()
 
 
-// CUsePrscDLLDlg 消息处理程序
+DWORD  WINAPI  NetCheckProc(LPVOID lpParam)
+{
+	ResetEvent(g_hExitEvent); 
+	while (TRUE)
+	{
+		if (FALSE == CheckIPReachable("114.114.114.114"))
+			((CUsePrscDLLDlg *)lpParam)->m_bNetOk = FALSE;
+		else 
+			((CUsePrscDLLDlg *)lpParam)->m_bNetOk = TRUE;
+
+		DWORD  dwWartRet = ::WaitForSingleObject(g_hExitEvent, 1);
+		if (WAIT_OBJECT_0 == dwWartRet)
+		{
+			OutputDebugString("线程退出咯\n");
+			break;
+		}
+	}
+	return 0;
+}
+
 
 BOOL CUsePrscDLLDlg::OnInitDialog()
 {
@@ -393,11 +264,15 @@ BOOL CUsePrscDLLDlg::OnInitDialog()
 			CDialogEx::OnOK();
 		}
 	}
-	
 
 
+	g_hExitEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+	m_hNetCheckThread = CreateThread(NULL, 0, NetCheckProc, this, NULL, NULL);
 
+
+	g_hCheckIpMutex	= CreateMutex(NULL, FALSE, NULL);
 	CDialogEx::OnInitDialog();
+
 
 	// 将“关于...”菜单项添加到系统菜单中。
 
@@ -430,7 +305,7 @@ BOOL CUsePrscDLLDlg::OnInitDialog()
 	m_menu.LoadMenu(IDR_MAIN);   //menu应该保存起来 
 	SetMenu(&m_menu);
 	GetMenu()->GetSubMenu(0)->GetSubMenu(0)->CheckMenuRadioItem(0, 1, 0, MF_BYPOSITION  ); //改为ID_menuSkin2为选中项
-	SetDlgItemText(IDC_EDIT_OUTPUT, _T("==============================================\r\n使用说明:\r\n\t1.请保持网络连接正常;\r\n\t2.请关闭\"某安全卫士\"或\"某毒霸\";\r\n\t3.请关闭防火墙.\r\n\r\n\r\n温馨提示:\r\n\t本软件基于百度人工智能平台,识别结果可能存在误差.\r\n\r\n==============================================\r\n"));
+	SetDlgItemText(IDC_EDIT_OUTPUT, _T("==============================================\r\n使用说明:\r\n\t1.请保持网络连接正常;\r\n\t2.请关闭\"某卫士\"或\"某毒霸\"或\"某管家\";\r\n\t3.请关闭防火墙.\r\n\r\n\r\n温馨提示:\r\n\t本软件基于百度人工智能平台,识别结果可能存在误差.\r\n\r\n==============================================\r\n"));
 
 
 	TCHAR szDocPath[_MAX_PATH];
@@ -583,7 +458,6 @@ void CUsePrscDLLDlg::OnPaint()
 INT  GetWindowMajorVerNo()
 {
 	OSVERSIONINFO osvi;
-	BOOL bIsWindowsXPorLater;
 	ZeroMemory(&osvi, sizeof(OSVERSIONINFO));
 	osvi.dwOSVersionInfoSize = sizeof(OSVERSIONINFO);
 
@@ -602,31 +476,155 @@ HCURSOR CUsePrscDLLDlg::OnQueryDragIcon()
 }
 
 
+
+
+DWORD  WINAPI  OCRThreadProc(LPVOID  lpParam)
+{
+	CUsePrscDLLDlg  *pDlg = static_cast<CUsePrscDLLDlg *>(lpParam);
+
+	// 设置APPID/AK/SK
+	std::string app_id;
+	std::string api_key;
+	std::string secret_key;
+
+	//app_id = "11176125";
+	//api_key = "nUKlV0kDnZTBzNDBsONDhCXu";
+	//secret_key = "5riESvRvtMLHhe9SM3sSMCt87E4bCapM";
+	app_id = pDlg->m_strAppID;
+	api_key = pDlg->m_strApiKey;
+	secret_key = pDlg->m_strSecreteKey;
+
+
+	aip::Ocr client(app_id, api_key, secret_key);
+
+	Json::Value result;
+
+	std::string image;
+	if (-1 == aip::get_file_content(pDlg->m_strJpgName.GetBuffer(), &image))
+	{
+		pDlg->MessageBox(_T("获取图片内容失败,可能是截取区域太小或太大"), _T("提示"), MB_OK);
+		pDlg->UpdateWindow();
+		DeleteFile(pDlg->m_strJpgName);
+
+		pDlg->GetDlgItem(IDOK)->EnableWindow(TRUE);
+		pDlg->GetSystemMenu(FALSE)->EnableMenuItem(SC_CLOSE, MF_ENABLED);
+		pDlg->m_bBtnOkStatus = TRUE;
+		return 0;
+	}
+
+	// 如果有可选参数
+	std::map<std::string, std::string> options;
+	options["language_type"] = "CHN_ENG";
+	options["detect_direction"] = "true";
+	options["detect_language"] = "true";
+	options["probability"] = "true";
+
+	int result_num = 0;
+	for (int iTry = 0; iTry < 5; iTry++)  //尝试5次, 如果5次都失败, 没办法了
+	{
+		if (pDlg->m_bHigh)
+			result = client.accurate_basic(image, options); //高精度
+		else
+			result = client.general_basic(image, options); //普通精度
+		result_num = result["words_result_num"].asInt();
+		if (result_num > 0)
+			break;
+	}
+
+	double probabilitySum = 0.0;
+	int  iMaxCharCount = 0; //识别结果中一行包含的 最大字符数
+	CString strOutput = _T("");
+	if (result_num == 0)
+	{
+		std::string  err_msg = result["error_msg"].asString();
+		std::string  err_code = result["error_code"].asString();
+		strOutput = CString(_T("错误码:")) + CString(err_code.c_str()) + CString("\r\n") + _T("错误描述:") + CString(err_msg.c_str()) + _T("\r\n");
+		strOutput += CString(_T("\r\n本次识别未成功,很抱歉,请您再试试. 祝您好运! ^_^"));
+
+		Json::StyledWriter sw;
+		std::ofstream os;
+		os.open("tmp.json");
+		os << sw.write(result);
+		os.close();
+	}
+	else
+	{
+		for (int i = 0; i < result["words_result"].size(); i++)
+		{
+			probabilitySum += result["words_result"][i]["probability"]["average"].asDouble(); //识别的精确度
+			std::string tmpStr = result["words_result"][i]["words"].asCString();
+			char *pgb2312 = new char[tmpStr.length() * 2];
+			memset(pgb2312, 0, tmpStr.length() * 2);
+			Utf8ToGB2312(tmpStr.c_str(), pgb2312);
+			strOutput += pgb2312 + CString("\r\n");
+
+			CString strTmp; strTmp = pgb2312;
+			if (strTmp.GetLength() > iMaxCharCount /*字符数,不是字节数*/)
+				iMaxCharCount = strTmp.GetLength();
+
+			if (pgb2312)
+			{
+				delete[] pgb2312;
+				pgb2312 = NULL;
+			}
+		}
+	}
+
+	double probabilityAvr = (0 == result["words_result"].size()) ? (0) : (probabilitySum / (double)result["words_result"].size());
+	CString strProbOutput;
+	strProbOutput.Format("%.1f%%", probabilityAvr * 100);
+	pDlg->m_status.SetPaneText(1, _T("平均准确率: ") + strProbOutput);
+
+	int iRows = result["words_result"].size();
+	CString strRows;
+	strRows.Format("总行数: %d", iRows);
+	pDlg->m_status.SetPaneText(0, strRows);
+
+
+	pDlg->SetDlgItemText(IDC_EDIT_OUTPUT, _T(""));
+	pDlg->SetDlgItemText(IDC_EDIT_OUTPUT, strOutput);
+
+	int nLine = ((CEdit*)(pDlg->GetDlgItem(IDC_EDIT_OUTPUT)))->GetLineCount();
+
+	if (nLine > pDlg->m_nLineCount)
+		pDlg->GetDlgItem(IDC_EDIT_OUTPUT)->ShowScrollBar(SB_VERT, TRUE);
+	else
+		pDlg->GetDlgItem(IDC_EDIT_OUTPUT)->ShowScrollBar(SB_VERT, FALSE);
+
+	if (iMaxCharCount > pDlg->m_nColumnCount)
+		pDlg->GetDlgItem(IDC_EDIT_OUTPUT)->ShowScrollBar(SB_HORZ, TRUE);
+	else
+		pDlg->GetDlgItem(IDC_EDIT_OUTPUT)->ShowScrollBar(SB_HORZ, FALSE);
+
+	pDlg->UpdateWindow();
+	DeleteFile(pDlg->m_strJpgName);
+
+
+	pDlg->GetDlgItem(IDOK)->EnableWindow(TRUE);
+	pDlg->GetSystemMenu(FALSE)->EnableMenuItem(SC_CLOSE, MF_ENABLED);
+	pDlg->m_bBtnOkStatus = TRUE;
+
+	return 0;
+}
+
+
+
 void CUsePrscDLLDlg::OnBnClickedOk()
 {
-#if 0
-	Gdiplus::Bitmap newbitmap(L"test.bmp");
-	const wchar_t *pFileName = L"new.jpg";
-	Bitmap2Jpg(&newbitmap, pFileName);
-
-	return;
-#endif
-
-
-
 	CRect rectDlg;
 	GetWindowRect(rectDlg);//获得窗体的大小
 
 	TCHAR szTempDir[MAX_PATH];
 	memset(szTempDir, 0, sizeof(szTempDir));
 	GetTempPath(sizeof(szTempDir), szTempDir);//获取临时文件夹路径
-	CString strBmpName = szTempDir + CString(_T("__ocr_temp.bmp"));
+
 	CString strJpgName = szTempDir + CString(_T("__ocr_temp.jpg"));
+	m_strJpgName = strJpgName;
+
 	BOOL bNewImageFlag = FALSE;
-	HINSTANCE dll_handle = LoadLibrary("PrScrn.dll");
-	if (dll_handle != NULL)
+	HINSTANCE hPrScrnDLL = LoadLibrary("PrScrn.dll");
+	if (hPrScrnDLL != NULL)
 	{
-		
 		MoveWindow(rectDlg.TopLeft().x, rectDlg.TopLeft().y, 0, 0, TRUE);
 
 
@@ -637,10 +635,12 @@ void CUsePrscDLLDlg::OnBnClickedOk()
 			while (!CloseClipboard()) {};
 		}
 
-		EntryPoint my_fun = (EntryPoint)GetProcAddress(dll_handle, _T("PrScrn"));
-		if (my_fun != NULL)
+		//从PrScrn.dll 获取截图入口地址
+		EntryPoint pfnScreenShot = (EntryPoint)GetProcAddress(hPrScrnDLL, _T("PrScrn"));
+		if (pfnScreenShot != NULL)
 		{
-			my_fun((HWND)this->m_hWnd, dll_handle, "PrScrn", 0);
+			//执行截图
+			pfnScreenShot((HWND)this->m_hWnd, hPrScrnDLL, "PrScrn", 0);
 
 			if (OpenClipboard())
 			{
@@ -648,27 +648,14 @@ void CUsePrscDLLDlg::OnBnClickedOk()
 				HBITMAP hBmNew = (HBITMAP)GetClipboardData(CF_BITMAP);
 				if (hBmNew)
 				{
-					//保存为图片文件
-					//SaveBitmapToFile(hBmNew, strBmpName);
-
-#if defined(USE_GDI)
-					//CString strMajor; strMajor.Format("%d", GetWindowMajorVerNo());
-					//MessageBox(strMajor, _T("window版本号"), MB_OK);
-					//if (GetWindowMajorVerNo() == 10) //win10
-					{
-						//Gdiplus::Bitmap bitmap(strBmpName.AllocSysString());
-						Gdiplus::Bitmap bitmap(hBmNew, NULL);  //直接获取内存中的bmp数据
-						Bitmap2Jpg(&bitmap, strJpgName.AllocSysString());  //将bmp数据转为 jpg, jpg比bmp小很多
-						//DeleteFile(strBmpName);
-						strBmpName = strJpgName;
-					}
-#endif
+					Gdiplus::Bitmap bitmap(hBmNew, NULL);  //直接获取内存中的bmp数据
+					Bitmap2Jpg(&bitmap, strJpgName.AllocSysString());  //将bmp数据转为 jpg, jpg比bmp小很多
 
 					//隐藏文件
 					CFileStatus fs;
-					CFile::GetStatus(strBmpName, fs);
+					CFile::GetStatus(strJpgName, fs);
 					fs.m_attribute = CFile::hidden; 
-					CFile::SetStatus(strBmpName, fs);
+					CFile::SetStatus(strJpgName, fs);
 
 					//关闭剪切板
 					while (!CloseClipboard()) {};
@@ -687,134 +674,32 @@ void CUsePrscDLLDlg::OnBnClickedOk()
 			return;
 		}
 
-		FreeLibrary(dll_handle); //释放动态库
+		FreeLibrary(hPrScrnDLL); //释放动态库
 	}
 	else
 	{
-		MessageBox(_T("加载！PrScrn.dll失败"), _T("提示"));
+		MessageBox(_T("加载！PrScrn.dll失败,请重试."), _T("提示"));
+		return;
 	}
-
-
-#if 1
-	
 	MoveWindow(rectDlg, TRUE);  //重新显示对话框
 	UpdateWindow(); //立即显示出来
+
 	if (bNewImageFlag)
 	{
+		if (FALSE == m_bNetOk)
+		{
+			MessageBox(_T("网络不可用, 请检查网络"), _T("提示"), MB_OK);
+			return;
+		}
+
 		SetDlgItemText(IDC_EDIT_OUTPUT, _T("识别中......"));
 		UpdateWindow(); //立即显示出来
-
-		// 设置APPID/AK/SK
-		std::string app_id;
-		std::string api_key;
-		std::string secret_key;
-
-		//app_id = "11176125";
-		//api_key = "nUKlV0kDnZTBzNDBsONDhCXu";
-		//secret_key = "5riESvRvtMLHhe9SM3sSMCt87E4bCapM";
-		app_id = m_strAppID;
-		api_key = m_strApiKey;
-		secret_key = m_strSecreteKey;
-
-
-		aip::Ocr client(app_id, api_key, secret_key);
-
-		Json::Value result;
-
-		std::string image;
-		aip::get_file_content(strBmpName.GetBuffer(), &image);
-
-		// 如果有可选参数
-		std::map<std::string, std::string> options;
-		options["language_type"] = "CHN_ENG";
-		options["detect_direction"] = "true";
-		options["detect_language"] = "true";
-		options["probability"] = "true";
-
-		int result_num = 0;
-		for (int iTry = 0; iTry < 5; iTry++)  //尝试5次, 如果5次都失败, 没办法了
-		{
-			if (m_bHigh)
-				result = client.accurate_basic(image, options); //高精度
-			else
-				result = client.general_basic(image, options); //普通精度
-			result_num = result["words_result_num"].asInt();
-			if (result_num > 0)
-				break;
-		}
-
-		double probabilitySum = 0.0;
-		int  iMaxCharCount = 0; //识别结果中一行包含的 最大字符数
-		CString strOutput = _T("");
-		if (result_num == 0)
-		{
-			std::string  err_msg = result["error_msg"].asString();
-			std::string  err_code = result["error_code"].asString();
-			strOutput = CString(_T("错误码:")) + CString(err_code.c_str()) + CString("\r\n") + _T("错误描述:") + CString(err_msg.c_str()) + _T("\r\n");
-			strOutput += CString(_T("\r\n本次识别未成功,很抱歉,请您再试试. 祝您好运! ^_^"));
-
-			Json::StyledWriter sw;
-			std::ofstream os;
-			os.open("tmp.json");
-			os << sw.write(result);
-			os.close();
-		}
-		else
-		{
-			for (int i = 0; i < result["words_result"].size(); i++)
-			{
-				probabilitySum += result["words_result"][i]["probability"]["average"].asDouble(); //识别的精确度
-				std::string tmpStr = result["words_result"][i]["words"].asCString();
-				char *pgb2312 = new char[tmpStr.length() * 2];
-				memset(pgb2312, 0, tmpStr.length() * 2);
-				Utf8ToGB2312(tmpStr.c_str(), pgb2312);
-				strOutput += pgb2312 + CString("\r\n");
-
-				CString strTmp; strTmp = pgb2312;
-				if (strTmp.GetLength() > iMaxCharCount /*字符数,不是字节数*/)
-					iMaxCharCount = strTmp.GetLength();
-
-				if (pgb2312)
-				{
-					delete[] pgb2312;
-					pgb2312 = NULL;
-				}
-			}
-		}
-
-		double probabilityAvr = (0 == result["words_result"].size() ) ? (0) : (probabilitySum / (double)result["words_result"].size());
-		CString strProbOutput;
-		strProbOutput.Format("%.1f%%", probabilityAvr * 100);
-		m_status.SetPaneText(1, _T("平均置信度: ") + strProbOutput);
-
-		int iRows = result["words_result"].size();
-		CString strRows; 
-		strRows.Format("总行数: %d", iRows);
-		m_status.SetPaneText(0, strRows);
-		
-
-		SetDlgItemText(IDC_EDIT_OUTPUT, _T(""));
-		SetDlgItemText(IDC_EDIT_OUTPUT, strOutput);
-
-		int nLine = ((CEdit*)GetDlgItem(IDC_EDIT_OUTPUT))->GetLineCount();
-		
-		if (nLine > m_nLineCount)
-			GetDlgItem(IDC_EDIT_OUTPUT)->ShowScrollBar(SB_VERT, TRUE);
-		else
-			GetDlgItem(IDC_EDIT_OUTPUT)->ShowScrollBar(SB_VERT, FALSE);
-
-		if(iMaxCharCount > m_nColumnCount)
-			GetDlgItem(IDC_EDIT_OUTPUT)->ShowScrollBar(SB_HORZ, TRUE);
-		else
-			GetDlgItem(IDC_EDIT_OUTPUT)->ShowScrollBar(SB_HORZ, FALSE);
-
-		UpdateWindow();
-		DeleteFile(strBmpName);
-		DeleteFile(strJpgName);
+		GetSystemMenu(FALSE)->EnableMenuItem(SC_CLOSE, MF_DISABLED);
+		GetDlgItem(IDOK)->EnableWindow(FALSE);
+		//创建线程
+		m_bBtnOkStatus = FALSE;
+		CreateThread(NULL, 0, OCRThreadProc, this, 0, NULL);
 	}
-
-#endif
-	
 }
 
 BOOL CUsePrscDLLDlg::PreTranslateMessage(MSG* pMsg)
@@ -823,6 +708,7 @@ BOOL CUsePrscDLLDlg::PreTranslateMessage(MSG* pMsg)
 	{
 		BOOL bCtrl = ::GetKeyState(VK_CONTROL) & 0x8000;
 		BOOL bAlt = ::GetKeyState(VK_MENU) & 0x8000;
+		BOOL bShift = ::GetKeyState(VK_SHIFT) & 0x8000;
 
 
 		switch (pMsg->wParam)
@@ -878,6 +764,7 @@ void CUsePrscDLLDlg::OnCheckAccuracy(UINT uID)
 void CUsePrscDLLDlg::OnCustomBaiDuID()
 {
 	CCurstomBaiDuIdDlg customDlg;
+	//customDlg.SetIcon(AfxGetApp()->LoadIcon(IDR_MAINFRAME), TRUE);
 	customDlg.DoModal();
 }
 
@@ -889,15 +776,38 @@ void CUsePrscDLLDlg::OnAbout()
 
 
 
+
 void CUsePrscDLLDlg::OnDownloadSrc()
 {
-	if (0 == DOWNLOAD_FILE("http://192.168.2.55/Other/ocr/ocr.7z", "截图文字识别_源代码.7z")) //本地局域网下载
+	char szFileName[] = "青狗-截图文字识别_源代码.7z";
+	if (CheckIPReachable(_T("192.168.2.55"))/* && 0 == DownloadSrcFile("http://192.168.2.55/Other/ocr/ocr.7z", szFileName)*/) //本地局域网下载
 	{
-		MessageBox(_T("下载成功, 保存在程序所在文件夹, 文件名为: 截图文字识别_源代码.7z "), _T("提示"));
+		ShellExecute(NULL, _T("open"), _T("http://192.168.2.55/Other/ocr"), NULL, NULL, SW_SHOW);
+		//MessageBox(_T("下载成功, 保存在程序所在文件夹, 文件名为: 青狗-截图文字识别_源代码.7z "), _T("提示"));
+		return;
 	}
 	else //访问github
 	{
+		//::DeleteFile(szFileName); //删除下载失败的空文件
 		ShellExecute(NULL, _T("open"), _T("https://github.com/youngqqcn/QOcr"), NULL, NULL, SW_SHOW);
+		return;
 	}
 	
 }
+
+
+
+void CUsePrscDLLDlg::OnClose()
+{
+	// TODO: Add your message handler code here and/or call default
+	MoveWindow(0, 0, 0, 0, TRUE); //隐藏窗口
+	ShowWindow(SW_HIDE); //隐藏任务栏图片
+
+	//等待 网络检测线程 退出
+	SetEvent(g_hExitEvent);
+	::WaitForSingleObject(m_hNetCheckThread, INFINITE);
+	CDialogEx::OnClose();
+}
+
+
+

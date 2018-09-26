@@ -86,7 +86,7 @@
     <LinkIncremental>false</LinkIncremental>
     <OutDir>..\bin</OutDir>
     <IncludePath>..\include\aip-cpp-sdk-0.6.0;..\include\openssl;..\include;.\;$(IncludePath)</IncludePath>
-    <TargetName>截图文字识别</TargetName>
+    <TargetName>青狗-截图文字识别</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
@@ -242,9 +242,6 @@
     <ClCompile Include="UsePrscDLLDlg.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ResourceCompile Include="UsePrscDLL.rc" />
-  </ItemGroup>
-  <ItemGroup>
     <None Include="..\include\aip-cpp-sdk-0.6.0\README.md" />
     <None Include="..\include\json\json.pri" />
     <None Include="..\include\json\json_valueiterator.inl" />
@@ -252,7 +249,10 @@
     <None Include="res\UsePrscDLL.rc2" />
   </ItemGroup>
   <ItemGroup>
-    <Image Include="res\UsePrscDLL.ico" />
+    <ResourceCompile Include="UsePrscDLL.rc" />
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="res\dog.ico" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

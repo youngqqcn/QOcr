@@ -23,4 +23,5 @@ protected:
 public:
 	afx_msg void OnBnClickedOk();
 	afx_msg void OnNMClickSyslinkBaiduai(NMHDR *pNMHDR, LRESULT *pResult);
+	virtual BOOL OnInitDialog();
 };

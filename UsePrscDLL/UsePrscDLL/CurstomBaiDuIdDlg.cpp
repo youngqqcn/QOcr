@@ -5,6 +5,7 @@
 #include "UsePrscDLL.h"
 #include "CurstomBaiDuIdDlg.h"
 #include "afxdialogex.h"
+#include "resource.h"
 
 
 // CCurstomBaiDuIdDlg dialog
@@ -14,7 +15,7 @@ IMPLEMENT_DYNAMIC(CCurstomBaiDuIdDlg, CDialogEx)
 CCurstomBaiDuIdDlg::CCurstomBaiDuIdDlg(CWnd* pParent /*=NULL*/)
 	: CDialogEx(IDD_DLG_CUSTOM_BAIDUID, pParent)
 {
-
+	//SetIcon(AfxGetApp()->LoadIcon(IDR_MAINFRAME), FALSE);
 }
 
 CCurstomBaiDuIdDlg::~CCurstomBaiDuIdDlg()
@@ -89,4 +90,17 @@ void CCurstomBaiDuIdDlg::OnBnClickedOk()
 void CCurstomBaiDuIdDlg::OnNMClickSyslinkBaiduai(NMHDR *pNMHDR, LRESULT *pResult)
 {
 	ShellExecute(NULL, _T("open"), _T("https://login.bce.baidu.com/"), NULL, NULL, SW_SHOW);
+}
+
+
+BOOL CCurstomBaiDuIdDlg::OnInitDialog()
+{
+	CDialogEx::OnInitDialog();
+
+	SetIcon(AfxGetApp()->LoadIcon(IDR_MAINFRAME), FALSE); //…Ë÷√–°Õº±Í 
+
+	// TODO:  Add extra initialization here
+
+	return TRUE;  // return TRUE unless you set the focus to a control
+				  // EXCEPTION: OCX Property Pages should return FALSE
 }
