@@ -650,15 +650,12 @@ void CUsePrscDLLDlg::OnBnClickedOk()
 				{
 					Gdiplus::Bitmap bitmap(hBmNew, NULL);  //直接获取内存中的bmp数据
 					Bitmap2Jpg(&bitmap, strJpgName.AllocSysString());  //将bmp数据转为 jpg, jpg比bmp小很多
-
 					//隐藏文件
 					CFileStatus fs;
 					CFile::GetStatus(strJpgName, fs);
 					fs.m_attribute = CFile::hidden; 
 					CFile::SetStatus(strJpgName, fs);
-
-					//关闭剪切板
-					while (!CloseClipboard()) {};
+					
 					if (hBmNew)
 					{
 						DeleteObject(hBmNew);
@@ -666,7 +663,11 @@ void CUsePrscDLLDlg::OnBnClickedOk()
 					}
 					bNewImageFlag = TRUE;
 				}
+
+				//关闭剪切板
+				while (!CloseClipboard()) {};
 			}
+			
 		}
 		else
 		{
