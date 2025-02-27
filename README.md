@@ -1,7 +1,12 @@
+![](./qocr.PNG)
+
 # 说明
 
+百度ocr的接口需要付费购买
+https://ai.baidu.com/ai-doc/OCR/skibizxzo
+
 ## 编译
-- 本人使用vs2015开发, 如果vs版本不同或使用其他开发工具,请自行修改项目属性.
+- 使用visual studio 编译即可 
 - vs下直接使用 Debug/x86 或 Release/x86 进行编译即可.
 
 
@@ -11,6 +16,7 @@
 		完成截图后图片以位图的形式存放在系统剪切板中.只要将剪切板中的图片保存为位图文件即可.
 		
 - 文字识别: 文字识别使用了百度人工智能接口,具体使用方法见百度AI官网或源码.
+  - https://ai.baidu.com/ai-doc/OCR/skibizxzo
 
 ## V1.1更新说明
 - 1.用jpg图片格式替换bmp格式,解决了Win10截图文件过大导致文件上传超时的bug

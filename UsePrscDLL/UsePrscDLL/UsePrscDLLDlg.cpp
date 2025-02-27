@@ -305,15 +305,18 @@ BOOL CUsePrscDLLDlg::OnInitDialog()
 	m_menu.LoadMenu(IDR_MAIN);   //menu应该保存起来 
 	SetMenu(&m_menu);
 	GetMenu()->GetSubMenu(0)->GetSubMenu(0)->CheckMenuRadioItem(0, 1, 0, MF_BYPOSITION  ); //改为ID_menuSkin2为选中项
-	SetDlgItemText(IDC_EDIT_OUTPUT, _T("==============================================\r\n使用说明:\r\n\t1.请保持网络连接正常;\r\n\t2.请关闭\"某卫士\"或\"某毒霸\"或\"某管家\";\r\n\t3.请关闭防火墙.\r\n\r\n\r\n温馨提示:\r\n\t本软件基于百度人工智能平台,识别结果可能存在误差.\r\n\r\n==============================================\r\n"));
+	SetDlgItemText(IDC_EDIT_OUTPUT, _T("==============================================\r\n使用说明:\r\n\t1.请保持网络连接正常;\r\n\t2.请关闭360卫士 \t3.请关闭防火墙.\r\n\r\n\r\n温馨提示:\r\n\t本软件基于百度人工智能平台,识别结果可能存在误差.\r\n\r\n==============================================\r\n  \r\n\r\n 百度取消了免费api,  默认的API key已经失效， 需要自己付费购买 \r\n https://ai.baidu.com/ai-doc/OCR/skibizxzo  2025-02-27"));
 
 
 	TCHAR szDocPath[_MAX_PATH];
 	SHGetSpecialFolderPath(this->GetSafeHwnd(), szDocPath, CSIDL_MYDOCUMENTS, 0);
 	CString strCfgFilePath = szDocPath + CString(_T("\\__ocr_config"));
 	CStdioFile  file;
+	AfxMessageBox(_T("百度取消了免费api， 需要自己付费购买 "));
 	if (FALSE == file.Open(strCfgFilePath,  CStdioFile::shareCompat|CStdioFile::modeRead)) //使用默认账号
 	{
+		// 已经失效， 百度取消了免费api， 需要自己付费购买 2025-02-27 
+		// https://ai.baidu.com/ai-doc/OCR/skibizxzo
 		m_strAppID = _T("11176125");
 		m_strApiKey = _T("nUKlV0kDnZTBzNDBsONDhCXu");
 		m_strSecreteKey = _T("5riESvRvtMLHhe9SM3sSMCt87E4bCapM");
@@ -806,7 +809,7 @@ void CUsePrscDLLDlg::OnClose()
 
 	//等待 网络检测线程 退出
 	SetEvent(g_hExitEvent);
-	::WaitForSingleObject(m_hNetCheckThread, INFINITE);
+	::WaitForSingleObject(m_hNetCheckThread, 1000);
 	CDialogEx::OnClose();
 }
 
